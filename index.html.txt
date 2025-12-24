@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Billing SPA - Multi Phase</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+    <style>
+        :root { --main: #002d5b; --accent: #f39c12; --bg: #f4f7f9; }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 1100px; margin: auto; display: grid; grid-template-columns: 420px 1fr; gap: 30px; }
+        
+        /* FORM STYLING */
+        .input-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+        h3 { margin-top: 0; color: var(--main); border-bottom: 2px solid #f0f0f0; padding-bottom: 15px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; margin-bottom: 6px; }
+        input, select { width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+        
+        /* PAYMENT LOGIC STYLING */
+        .payment-entry { background: #f9f9f9; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px dashed #ccc; }
+        .btn-add { background: #f39c12; color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 11px; width: 100%; margin-bottom: 15px; font-weight: bold; }
+        
+        .btn-main { width: 100%; padding: 14px; margin-top: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-preview { background: var(--main); color: white; }
+        .btn-pdf { background: #27ae60; color: white; margin-top: 10px; }
+        
+        /* INVOICE STYLING */
+        .preview-card { background: white; border-radius: 4px; box-shadow: 0 0 40px rgba(0,0,0,0.1); display: none; }
+        #invoice-render { padding: 50px; }
+        .header { display: flex; justify-content: space-between; border-bottom: 3px solid var(--main); padding-bottom: 20px; }
+        .brand h1 { margin: 0; color: var(--main); font-size: 20px; }
+        .brand p { margin: 5px 0 0; font-size: 11px; color: #666; }
+        
+        .item-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .item-table th { background: #f8f9fa; color: var(--main); padding: 10px; text-align: left; font-size: 12px; border-bottom: 2px solid #eee; }
+        .item-table td { padding: 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+
+        .payment-history-table { width: 100%; margin-top: 10px; font-size: 12px; background: #fffcf5; border-radius: 8px; overflow: hidden; }
+        .payment-history-table th { background: #f39c12; color: white; padding: 8px; }
+        .payment-history-table td { padding: 8px; text-align: center; border-bottom: 1px solid #ffeeba; }
+
+        .summary { margin-left: auto; width: 280px; margin-top: 20px; }
+        .row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; }
+        .row-total { border-top: 2px solid var(--main); margin-top: 10px; padding-top: 10px; font-weight: 900; font-size: 16px; color: var(--main); }
+
+        .payment-box { margin-top: 30px; background: #f8fbff; border: 1px solid #e1e8f0; padding: 15px; border-radius: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .bank-card { background: white; padding: 8px; border-radius: 6px; border: 1px solid #eee; font-size: 11px; }
+
+        @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="input-card">
+        <h3>Billing Manager SPA</h3>
+        <div class="form-group">
+            <label>Tipe Dokumen</label>
+            <select id="docType">
+                <option value="INVOICE">Tagihan (Invoice)</option>
+                <option value="KWITANSI">Kwitansi Pelunasan</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Pelanggan & WA</label>
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="nama" placeholder="Nama" style="flex: 2;">
+                <input type="number" id="hp" placeholder="628..." style="flex: 1;">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Deskripsi Proyek</label>
+            <input type="text" id="orderan" placeholder="Misal: Web Project">
+        </div>
+        <div class="form-group">
+            <label>Total Nilai Kontrak (Rp)</label>
+            <input type="number" id="total_kontrak" value="0">
+        </div>
+
+        <label>Riwayat Pembayaran (DP/Tahap)</label>
+        <div id="payment-list">
+            <div class="payment-entry">
+                <input type="text" placeholder="Tahap 1 / DP" class="pay-desc" value="DP Awal" style="margin-bottom: 5px;">
+                <input type="number" placeholder="Jumlah (Rp)" class="pay-amount" value="0">
+            </div>
+        </div>
+        <button class="btn-add" onclick="addPaymentRow()">+ Tambah Tahap Pembayaran</button>
+
+        <div class="form-group">
+            <label>Deadline Proyek</label>
+            <input type="date" id="deadline">
+        </div>
+
+        <button class="btn-main btn-preview" onclick="renderPreview()">PREVIEW & HITUNG SISA</button>
+        <div id="action-btns" style="display: none;">
+            <button class="btn-main btn-pdf" onclick="generatePDF()">CETAK PDF</button>
+            <div id="wa-btn-place"></div>
+        </div>
+    </div>
+
+    <div class="preview-card" id="previewContainer">
+        <div id="invoice-render">
+            <div class="header">
+                <div class="brand">
+                    <h1>CV. SIMPUL PROJECT ACADEMY</h1>
+                    <p>Banda Aceh | Telp/WA: +62 821-2872-1401</p>
+                </div>
+                <div style="text-align: right;">
+                    <h2 id="out-title" style="margin:0; color:var(--main)">INVOICE</h2>
+                    <p id="out-date" style="font-size: 11px; margin: 5px 0;"></p>
+                </div>
+            </div>
+
+            <div style="margin: 30px 0; font-size: 13px;">
+                <strong>Kepada Yth:</strong><br>
+                <span id="out-nama"></span> (<span id="out-hp"></span>)
+            </div>
+
+            <table class="item-table">
+                <thead>
+                    <tr>
+                        <th>DESKRIPSI PROYEK</th>
+                        <th>DEADLINE</th>
+                        <th style="text-align: right;">TOTAL KONTRAK</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td id="out-order"></td>
+                        <td id="out-deadline"></td>
+                        <td id="out-total" style="text-align: right; font-weight: bold;"></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div style="margin-top: 20px;">
+                <strong style="font-size: 12px; color: var(--accent);">RIWAYAT PEMBAYARAN:</strong>
+                <table class="payment-history-table">
+                    <thead>
+                        <tr>
+                            <th>Keterangan</th>
+                            <th>Jumlah Bayar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="out-history-body">
+                        </tbody>
+                </table>
+            </div>
+
+            <div class="summary">
+                <div class="row">
+                    <span>Total Kontrak:</span>
+                    <span id="out-sub"></span>
+                </div>
+                <div class="row">
+                    <span>Total Terbayar:</span>
+                    <span id="out-paid-total" style="color: var(--success); font-weight: bold;"></span>
+                </div>
+                <div class="row row-total">
+                    <span>SISA TAGIHAN:</span>
+                    <span id="out-sisa"></span>
+                </div>
+            </div>
+
+            <div class="payment-box">
+                <div class="bank-card">
+                    <strong>BSI (Bank Syariah Indonesia)</strong><br>
+                    No. Rek: 085262608383<br>
+                    a.n. Simpul Project Academy
+                </div>
+                <div class="bank-card">
+                    <strong>GOPAY / E-WALLET</strong><br>
+                    No: 085262608383<br>
+                    a.n. CV Simpul Project
+                </div>
+            </div>
+
+            <p style="font-size: 10px; color: #999; text-align: center; margin-top: 30px;">
+                Dokumen ini sah diterbitkan secara digital oleh CV. Simpul Project Academy.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    const formatIDR = (n) => "Rp " + new Number(n).toLocaleString('id-ID');
+
+    function addPaymentRow() {
+        const container = document.getElementById('payment-list');
+        const div = document.createElement('div');
+        div.className = 'payment-entry';
+        div.innerHTML = `
+            <input type="text" placeholder="Misal: Tahap 2" class="pay-desc" style="margin-bottom: 5px;">
+            <input type="number" placeholder="Jumlah (Rp)" class="pay-amount" value="0">
+        `;
+        container.appendChild(div);
+    }
+
+    function renderPreview() {
+        const totalKontrak = parseInt(document.getElementById('total_kontrak').value || 0);
+        const descs = document.querySelectorAll('.pay-desc');
+        const amounts = document.querySelectorAll('.pay-amount');
+        
+        let totalTerbayar = 0;
+        let historyHTML = '';
+
+        // Hitung Semua Tahap Pembayaran
+        amounts.forEach((amt, index) => {
+            const val = parseInt(amt.value || 0);
+            if (val > 0) {
+                totalTerbayar += val;
+                historyHTML += `<tr><td>${descs[index].value || 'Pembayaran'}</td><td>${formatIDR(val)}</td></tr>`;
+            }
+        });
+
+        const sisa = totalKontrak - totalTerbayar;
+
+        // Tampilkan ke Invoice
+        document.getElementById('out-title').innerText = document.getElementById('docType').value;
+        document.getElementById('out-date').innerText = "Tanggal: " + new Date().toLocaleDateString('id-ID', {dateStyle: 'long'});
+        document.getElementById('out-nama').innerText = document.getElementById('nama').value.toUpperCase();
+        document.getElementById('out-hp').innerText = "+" + document.getElementById('hp').value;
+        document.getElementById('out-order').innerText = document.getElementById('orderan').value;
+        document.getElementById('out-deadline').innerText = document.getElementById('deadline').value || "-";
+        
+        document.getElementById('out-total').innerText = formatIDR(totalKontrak);
+        document.getElementById('out-sub').innerText = formatIDR(totalKontrak);
+        document.getElementById('out-history-body').innerHTML = historyHTML;
+        document.getElementById('out-paid-total').innerText = "- " + formatIDR(totalTerbayar);
+        document.getElementById('out-sisa').innerText = formatIDR(sisa);
+
+        document.getElementById('previewContainer').style.display = 'block';
+        document.getElementById('action-btns').style.display = 'block';
+
+        // WhatsApp Pesan
+        const msg = `Halo *${document.getElementById('nama').value}*, Berikut update tagihan Anda dari *Simpul Project Academy*.%0A%0A*Total Kontrak:* ${formatIDR(totalKontrak)}%0A*Total Masuk:* ${formatIDR(totalTerbayar)}%0A*Sisa Akhir:* ${formatIDR(sisa)}%0A%0ATerima kasih.`;
+        document.getElementById('wa-btn-place').innerHTML = `
+            <a href="https://wa.me/${document.getElementById('hp').value}?text=${msg}" target="_blank" 
+               style="display:block; text-align:center; background:#25d366; color:white; padding:12px; margin-top:10px; border-radius:8px; text-decoration:none; font-weight:bold;">
+               KIRIM UPDATE KE WHATSAPP
+            </a>`;
+    }
+
+    function generatePDF() {
+        const element = document.getElementById('invoice-render');
+        html2pdf().set({
+            margin: 10,
+            filename: 'Invoice-SPA-Phase.pdf',
+            html2canvas: { scale: 3 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(element).save();
+    }
+</script>
+
+</body>
+</html>
